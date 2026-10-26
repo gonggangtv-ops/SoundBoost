@@ -14,6 +14,16 @@ android {
         versionName = "1.2"
     }
 
+    // ใช้กุญแจเดียวกันทุกครั้ง ทำให้ติดตั้งเวอร์ชันใหม่ทับของเดิมได้
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("soundboost.jks")
+            storePassword = "soundboost"
+            keyAlias = "soundboost"
+            keyPassword = "soundboost"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
