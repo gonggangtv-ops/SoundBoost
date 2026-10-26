@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
 
     // โหมด MAX
     private Switch maxSwitch;
-    private SeekBar driveBar, punchBar, testBar;
+    private SeekBar driveBar, punchBar, trebleBar, testBar;
     private TextView lowCutValue, playBtn;
     private LinearLayout testPanel;
     private final ToneGen tone = new ToneGen();
@@ -222,6 +222,11 @@ public class MainActivity extends Activity {
             if (fromUser) { prefs.setPunch(value); push(); }
             return value + "%";
         });
+        trebleBar = sliderRow(c, "ความแหลม", 12, (value, fromUser) -> {
+            int db = value - 10;                     // -10 .. +2 dB
+            if (fromUser) { prefs.setTreble(db); push(); }
+            return (db > 0 ? "+" : "") + db + " dB";
+        });
 
         // ตัดเบสที่ลำโพงเล่นไม่ได้
         LinearLayout cutRow = new LinearLayout(this);
@@ -270,7 +275,7 @@ public class MainActivity extends Activity {
         testPanel.addView(btns);
         c.addView(testPanel);
 
-        c.addView(text("ถ้าเสียงแตก ให้ลดแรงขับลงก่อน และถ้าใช้โหมด MAX อยู่ แถบ \"เพิ่มความดัง\" ด้านบนจะไม่ทำงาน", 13, MUTED), lp(0, dp(10), 0, 0));
+        c.addView(text("ถ้าเสียงแหลมบาดหู ให้ลดความแหลม ถ้าเสียงแตก ให้ลดแรงขับลงก่อน และถ้าใช้โหมด MAX อยู่ แถบ \"เพิ่มความดัง\" ด้านบนจะไม่ทำงาน", 13, MUTED), lp(0, dp(10), 0, 0));
     }
 
     private void openTest() {
@@ -356,6 +361,7 @@ public class MainActivity extends Activity {
             maxSwitch.setChecked(prefs.maxOn());
             driveBar.setProgress(prefs.drive());
             punchBar.setProgress(prefs.punch());
+            trebleBar.setProgress(prefs.treble() + 10);
         }
         updateLowCutLabel();
     }

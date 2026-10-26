@@ -41,6 +41,10 @@ public final class Prefs {
     public int lowCut() { return sp.getInt("lowCut", 0); }
     public void setLowCut(int v) { sp.edit().putInt("lowCut", v).apply(); }
 
+    /** ปรับเสียงแหลมในโหมด MAX, dB (-10..+2) */
+    public int treble() { return sp.getInt("treble", -3); }
+    public void setTreble(int v) { sp.edit().putInt("treble", v).apply(); }
+
     public String preset() { return sp.getString("preset", "flat"); }
     public void setPreset(String v) { sp.edit().putString("preset", v).apply(); }
 }

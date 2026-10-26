@@ -47,16 +47,18 @@ final class MaxEngine {
                 pre.setBand(0, new DynamicsProcessing.EqBand(true, 20f, 0f));
                 pre.setBand(1, new DynamicsProcessing.EqBand(true, 40f, 0f));
             }
-            pre.setBand(2, new DynamicsProcessing.EqBand(true, 4000f, 0f));
-            pre.setBand(3, new DynamicsProcessing.EqBand(true, 20000f, 0f));
+            pre.setBand(2, new DynamicsProcessing.EqBand(true, 5000f, 0f));
+            pre.setBand(3, new DynamicsProcessing.EqBand(true, 20000f, p.treble()));   // ความแหลม
             dp.setPreEqAllChannelsTo(pre);
 
             // 2) คอมเพรสเซอร์ 3 ย่าน
             float k = p.punch() / 100f;                 // 0..1
             DynamicsProcessing.Mbc mbc = new DynamicsProcessing.Mbc(true, true, 3);
-            mbc.setBand(0, band(180f,  k, 1.15f, 20f, 120f));   // เบส: คุมให้กระชับ
-            mbc.setBand(1, band(3500f, k, 1.0f,  10f,  80f));   // กลาง: เสียงร้อง
-            mbc.setBand(2, band(20000f, k, 0.8f, 3f,   60f));   // แหลม: เบาๆ กันบาดหู
+            mbc.setBand(0, band(180f,  k, 1.15f, 20f, 120f, 1f));    // เบส: คุมให้กระชับ
+            mbc.setBand(1, band(4000f, k, 1.0f,  10f,  80f, 1f));    // กลาง: เสียงร้อง
+            // แหลม: ไม่ชดเชยความดัง แค่กดยอดเสียงที่บาดหู (เช่น เสียง ส/ซ ฉาบ)
+            mbc.setBand(2, new DynamicsProcessing.MbcBand(
+                    true, 20000f, 2f, 50f, 3f, -16f, 6f, -90f, 1f, 0f, 0f));
             dp.setMbcAllChannelsTo(mbc);
 
             // 3) แรงขับ + ลิมิตเตอร์
@@ -75,11 +77,11 @@ final class MaxEngine {
     }
 
     /** ยิ่ง k มาก ยิ่งบีบมากและชดเชยความดังกลับมามาก */
-    private static DynamicsProcessing.MbcBand band(float cutoff, float k, float weight, float attack, float release) {
+    private static DynamicsProcessing.MbcBand band(float cutoff, float k, float weight, float attack, float release, float makeupScale) {
         float amt = Math.min(1f, k * weight);
-        float threshold = -8f - 22f * amt;          // -8 .. -30 dB
+        float threshold = -8f - 20f * amt;          // -8 .. -28 dB
         float ratio = 1.5f + 2.5f * amt;            // 1.5 .. 4
-        float makeup = (-threshold) * (1f - 1f / ratio) * 0.55f;
+        float makeup = (-threshold) * (1f - 1f / ratio) * 0.45f * makeupScale;
         return new DynamicsProcessing.MbcBand(
                 true, cutoff, attack, release, ratio, threshold,
                 6f,      // knee
