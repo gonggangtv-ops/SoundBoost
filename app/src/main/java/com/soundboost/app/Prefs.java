@@ -49,6 +49,17 @@ public final class Prefs {
     public int soft() { return sp.getInt("soft", 40); }
     public void setSoft(int v) { sp.edit().putInt("soft", v).apply(); }
 
+    // ---------- ปรับอัตโนมัติ ----------
+    /** ผลการแก้เสียงจากการวัดด้วยไมค์ (dB ต่อช่อง คั่นด้วยจุลภาค) */
+    public String calib() { return sp.getString("calib", ""); }
+    public void setCalib(String v) { sp.edit().putString("calib", v).apply(); }
+    public boolean calibOn() { return sp.getBoolean("calibOn", false); }
+    public void setCalibOn(boolean v) { sp.edit().putBoolean("calibOn", v).apply(); }
+
+    /** เบสตามระดับเสียง: เปิดเบา = เบสมากขึ้น, เปิดดัง = เบสลดลงกันแตก */
+    public boolean autoBass() { return sp.getBoolean("autoBass", true); }
+    public void setAutoBass(boolean v) { sp.edit().putBoolean("autoBass", v).apply(); }
+
     public String preset() { return sp.getString("preset", "flat"); }
     public void setPreset(String v) { sp.edit().putString("preset", v).apply(); }
 }

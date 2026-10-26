@@ -10,12 +10,15 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ServiceInfo;
+import android.media.AudioManager;
 import android.media.audiofx.AudioEffect;
 import android.media.audiofx.BassBoost;
 import android.media.audiofx.Equalizer;
 import android.media.audiofx.LoudnessEnhancer;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -36,6 +39,21 @@ public class AudioService extends Service {
     private final Map<Integer, EffectSet> sessions = new HashMap<>();
     private boolean globalOk = false;
     private Prefs prefs;
+
+    /** ปิดเอฟเฟกต์ชั่วคราวระหว่างวัดลำโพงด้วยไมค์ */
+    private volatile boolean bypass = false;
+
+    // ติดตามระดับเสียงสำหรับ "เบสตามระดับเสียง"
+    private AudioManager audio;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private float lastVolume = -1f;
+    private final Runnable volumeWatch = new Runnable() {
+        @Override public void run() {
+            float v = volume();
+            if (Math.abs(v - lastVolume) > 0.01f) { lastVolume = v; applyAll(); }
+            handler.postDelayed(this, 700);
+        }
+    };
 
     private final BroadcastReceiver receiver = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) {
@@ -59,6 +77,7 @@ public class AudioService extends Service {
             return;
         }
         instance = this;
+        audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
         EffectSet global = new EffectSet(0);
         globalOk = global.works();
@@ -70,7 +89,9 @@ public class AudioService extends Service {
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, f, Context.RECEIVER_EXPORTED);
         else registerReceiver(receiver, f);
 
+        lastVolume = volume();
         applyAll();
+        handler.postDelayed(volumeWatch, 700);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -84,6 +105,7 @@ public class AudioService extends Service {
 
     @Override public void onDestroy() {
         instance = null;
+        handler.removeCallbacks(volumeWatch);
         try { unregisterReceiver(receiver); } catch (Throwable ignored) { }
         synchronized (sessions) {
             for (EffectSet e : sessions.values()) e.release();
@@ -112,8 +134,24 @@ public class AudioService extends Service {
 
     public void applyAll() {
         EqInfo info = EqInfo.get(this);
+        float v = volume();
         synchronized (sessions) {
-            for (EffectSet e : sessions.values()) e.apply(prefs, info);
+            for (EffectSet e : sessions.values()) e.apply(prefs, info, v, bypass);
+        }
+    }
+
+    public void setBypass(boolean on) {
+        bypass = on;
+        applyAll();
+    }
+
+    /** ระดับเสียงเพลงของมือถือ 0..1 */
+    public float volume() {
+        try {
+            int max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+            return max > 0 ? audio.getStreamVolume(AudioManager.STREAM_MUSIC) / (float) max : 0.5f;
+        } catch (Throwable t) {
+            return 0.5f;
         }
     }
 
@@ -123,7 +161,7 @@ public class AudioService extends Service {
         synchronized (sessions) {
             if (sessions.containsKey(s)) return;
             EffectSet e = new EffectSet(s);
-            if (e.works()) { sessions.put(s, e); e.apply(prefs, EqInfo.get(this)); }
+            if (e.works()) { sessions.put(s, e); e.apply(prefs, EqInfo.get(this), volume(), bypass); }
             else e.release();
         }
     }
@@ -173,7 +211,15 @@ public class AudioService extends Service {
 
         boolean works() { return eq != null || bb != null || le != null || max != null; }
 
-        void apply(Prefs p, EqInfo info) {
+        void apply(Prefs p, EqInfo info, float volume, boolean bypass) {
+            if (bypass) {
+                try { if (eq != null) eq.setEnabled(false); } catch (Throwable ignored) { }
+                try { if (bb != null) bb.setEnabled(false); } catch (Throwable ignored) { }
+                try { if (le != null) le.setEnabled(false); } catch (Throwable ignored) { }
+                if (max != null) max.disable();
+                return;
+            }
+
             if (eq != null) try {
                 short n = eq.getNumberOfBands();
                 for (short i = 0; i < n; i++) eq.setBandLevel(i, (short) info.clamp(p.band(i)));
@@ -182,6 +228,11 @@ public class AudioService extends Service {
 
             if (bb != null) try {
                 int v = p.bass();
+                if (p.autoBass() && v > 0) {
+                    // เปิดเบาเพิ่มเบส 60%, เปิดดังลดเหลือครึ่งเดียว
+                    float t = Math.max(0f, Math.min(1f, (volume - 0.3f) / 0.6f));
+                    v = Math.min(1000, Math.round(v * (1.6f - 1.1f * t)));
+                }
                 if (v > 0 && bb.getStrengthSupported()) bb.setStrength((short) v);
                 bb.setEnabled(v > 0);
             } catch (Throwable ignored) { }
@@ -193,7 +244,7 @@ public class AudioService extends Service {
                 le.setEnabled(v > 0);
             } catch (Throwable ignored) { }
 
-            if (max != null) max.apply(p);
+            if (max != null) max.apply(p, volume);
         }
 
         void release() {

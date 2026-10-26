@@ -50,6 +50,13 @@ public class MainActivity extends Activity {
     private final ToneGen tone = new ToneGen();
     private int savedLowCut = 0;
 
+    // ปรับอัตโนมัติ
+    private static final int REQ_MIC = 2;
+    private Switch calibSwitch, autoBassSwitch;
+    private TextView calibBtn, calibStatus;
+    private CurveView curve;
+    private boolean calibrating = false;
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         prefs = new Prefs(this);
@@ -161,6 +168,10 @@ public class MainActivity extends Activity {
         TextView warn = text("ถ้าเสียงแตกหรือพร่า ให้ลด \"เพิ่มเบส\" หรือ \"เพิ่มความดัง\" ลงทีละนิด", 13, WARN);
         boostCard.addView(warn, lp(0, dp(6), 0, 0));
 
+        // --- ปรับอัตโนมัติ ---
+        root.addView(sectionTitle("ปรับอัตโนมัติ"));
+        buildAutoCard(card(root));
+
         // --- โหมด MAX ---
         root.addView(sectionTitle("โหมด MAX"));
         buildMaxCard(card(root));
@@ -184,6 +195,150 @@ public class MainActivity extends Activity {
                 14, MUTED));
 
         return scroll;
+    }
+
+    private void buildAutoCard(LinearLayout c) {
+        TextView t = text("ให้แอปฟังลำโพงแล้วแก้เสียงให้เอง", 17, TEXT);
+        t.setTypeface(Typeface.DEFAULT_BOLD);
+        c.addView(t);
+        c.addView(text("หาจุดที่ลำโพงดังล้นจนบาดหู แล้วกดลงให้พอดี", 13, MUTED));
+
+        c.addView(text(
+                "1) หยุดเพลงก่อน และอยู่ในที่เงียบ\n" +
+                "2) วางมือถือห่างลำโพงประมาณ 1 เมตร หันด้านล่างของมือถือ (ไมค์) เข้าหาลำโพง\n" +
+                "3) ตั้งเสียงลำโพงระดับที่ฟังประจำ แล้วกดเริ่มวัด", 13, MUTED), lp(0, dp(10), 0, 0));
+
+        calibBtn = button("เริ่มวัดด้วยไมค์", true);
+        calibBtn.setOnClickListener(v -> startCalibration());
+        c.addView(calibBtn, lp(0, dp(12), 0, 0));
+
+        calibStatus = text("", 13, MUTED);
+        c.addView(calibStatus, lp(0, dp(10), 0, 0));
+
+        curve = new CurveView(this);
+        c.addView(curve, new LinearLayout.LayoutParams(-1, dp(110)));
+
+        calibSwitch = switchRow(c, "ใช้ผลที่วัดได้", "ปิดเพื่อฟังเทียบกับเสียงเดิม");
+        calibSwitch.setOnCheckedChangeListener((v, on) -> {
+            if (on == prefs.calibOn()) return;
+            prefs.setCalibOn(on);
+            push();
+            refreshStatusSoon();
+        });
+
+        LinearLayout line = new LinearLayout(this);
+        line.setBackgroundColor(LINE);
+        c.addView(line, lp(0, dp(14), 0, dp(4)));
+        line.getLayoutParams().height = dp(1);
+
+        autoBassSwitch = switchRow(c, "เบสตามระดับเสียง", "เปิดเบา = เบสลึกขึ้น · เปิดดัง = ลดเบสลงกันแตก");
+        autoBassSwitch.setOnCheckedChangeListener((v, on) -> {
+            if (on == prefs.autoBass()) return;
+            prefs.setAutoBass(on);
+            push();
+        });
+    }
+
+    private Switch switchRow(LinearLayout parent, String title, String sub) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(0, dp(8), 0, dp(4));
+        LinearLayout labels = column();
+        labels.addView(text(title, 15, TEXT));
+        labels.addView(text(sub, 12, MUTED));
+        row.addView(labels, new LinearLayout.LayoutParams(0, -2, 1));
+        Switch sw = new Switch(this);
+        row.addView(sw);
+        parent.addView(row);
+        return sw;
+    }
+
+    private void startCalibration() {
+        if (calibrating) return;
+        if (Build.VERSION.SDK_INT < 28) {
+            showCalibMessage("การแก้เสียงอัตโนมัติต้องใช้ Android 9 ขึ้นไป", true);
+            return;
+        }
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+        if (tone.isPlaying() || (testPanel != null && testPanel.getVisibility() == View.VISIBLE)) closeTest(false);
+
+        calibrating = true;
+        calibBtn.setText("กำลังวัด…");
+        calibBtn.setAlpha(0.6f);
+        showCalibMessage("เตรียมตัว…", false);
+
+        // ปิดเอฟเฟกต์ชั่วคราว จะได้วัดเสียงจริงของลำโพง
+        AudioService svc = AudioService.instance;
+        if (svc != null) svc.setBypass(true);
+
+        new Thread(() -> {
+            CalibMath.Result r = Calibrator.run(this, msg -> runOnUiThread(() -> showCalibMessage(msg, false)));
+            runOnUiThread(() -> finishCalibration(r));
+        }, "calibrate").start();
+    }
+
+    private void finishCalibration(CalibMath.Result r) {
+        calibrating = false;
+        calibBtn.setText("วัดใหม่");
+        calibBtn.setAlpha(1f);
+        AudioService svc = AudioService.instance;
+        if (svc != null) svc.setBypass(false);
+
+        if (!r.ok) {
+            showCalibMessage(r.error, true);
+            return;
+        }
+        prefs.setCalib(CalibMath.encode(r.correction));
+        prefs.setCalibOn(true);
+        calibSwitch.setEnabled(true);
+        calibSwitch.setChecked(true);
+        curve.setValues(r.correction);
+        showCalibMessage(summary(r.correction), false);
+        if (!prefs.enabled()) power.setChecked(true);
+        push();
+        refreshStatusSoon();
+    }
+
+    /** สรุปผลเป็นภาษาคน: จุดที่กดลงมากที่สุด 3 จุด และจุดที่เติม */
+    private String summary(double[] c) {
+        double[] f = CalibMath.CENTERS;
+        List<Integer> cuts = new ArrayList<>();
+        for (int i = 0; i < c.length; i++) {
+            boolean localMin = (i == 0 || c[i] <= c[i - 1]) && (i == c.length - 1 || c[i] <= c[i + 1]);
+            if (localMin && c[i] <= -2) cuts.add(i);
+        }
+        cuts.sort((a, b) -> Double.compare(c[a], c[b]));
+        StringBuilder sb = new StringBuilder();
+        if (cuts.isEmpty()) {
+            sb.append("ลำโพงตัวนี้เสียงค่อนข้างสมดุลอยู่แล้ว ปรับแค่เล็กน้อย");
+        } else {
+            sb.append("กดจุดที่บาดหูลง: ");
+            for (int k = 0; k < Math.min(3, cuts.size()); k++) {
+                int i = cuts.get(k);
+                if (k > 0) sb.append(", ");
+                sb.append(CalibMath.hzLabel(f[i])).append(" ").append(Math.round(c[i])).append(" dB");
+            }
+        }
+        int best = -1;
+        for (int i = 0; i < c.length; i++) if (c[i] >= 1.5 && (best < 0 || c[i] > c[best])) best = i;
+        if (best >= 0) sb.append("\nเติมช่วงที่ขาด: ").append(CalibMath.hzLabel(f[best])).append(" +").append(Math.round(c[best])).append(" dB");
+        sb.append("\nเปิดเพลงฟังได้เลย ลองปิดสวิตช์ \"ใช้ผลที่วัดได้\" เพื่อฟังเทียบ");
+        return sb.toString();
+    }
+
+    private void showCalibMessage(String msg, boolean warn) {
+        calibStatus.setText(msg);
+        calibStatus.setTextColor(warn ? WARN : ACCENT);
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        super.onRequestPermissionsResult(code, perms, results);
+        if (code != REQ_MIC) return;
+        if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) startCalibration();
+        else showCalibMessage("ต้องอนุญาตให้ใช้ไมค์ก่อน แอปจะฟังเฉพาะตอนวัด ไม่มีการอัดเก็บไว้", true);
     }
 
     private void buildMaxCard(LinearLayout c) {
@@ -388,6 +543,16 @@ public class MainActivity extends Activity {
             trebleBar.setProgress(prefs.treble() + 10);
         }
         updateLowCutLabel();
+
+        double[] corr = CalibMath.decode(prefs.calib());
+        calibSwitch.setEnabled(corr != null);
+        calibSwitch.setChecked(corr != null && prefs.calibOn());
+        autoBassSwitch.setChecked(prefs.autoBass());
+        if (corr != null) {
+            curve.setValues(corr);
+            calibBtn.setText("วัดใหม่");
+            if (calibStatus.getText().length() == 0) showCalibMessage(summary(corr), false);
+        }
     }
 
     private void applyPreset(Presets.Preset p) {
@@ -451,6 +616,7 @@ public class MainActivity extends Activity {
                 t = "● พร้อมแล้ว เปิดเพลงในแอปเพลงได้เลย (ถ้ากำลังเล่นอยู่ ให้หยุดแล้วเล่นใหม่)";
             }
             if (prefs.maxOn()) t += s.maxSupported() ? " · โหมด MAX เปิดอยู่" : " · เครื่องนี้ใช้โหมด MAX ไม่ได้";
+            if (prefs.calibOn() && s.maxSupported() && CalibMath.decode(prefs.calib()) != null) t += " · แก้เสียงตามที่วัดแล้ว";
             status.setText(t);
             status.setTextColor(ACCENT);
         }
