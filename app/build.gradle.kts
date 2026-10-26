@@ -10,8 +10,8 @@ android {
         applicationId = "com.soundboost.app"
         minSdk = 26          // Android 8.0 ขึ้นไป
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.2"
+        versionCode = 4
+        versionName = "1.3"
     }
 
     // ใช้กุญแจเดียวกันทุกครั้ง ทำให้ติดตั้งเวอร์ชันใหม่ทับของเดิมได้

@@ -45,6 +45,10 @@ public final class Prefs {
     public int treble() { return sp.getInt("treble", -3); }
     public void setTreble(int v) { sp.edit().putInt("treble", v).apply(); }
 
+    /** ความนุ่ม 0..100: เติมเสียงต่ำ-กลาง และลดช่วงที่บาดหู */
+    public int soft() { return sp.getInt("soft", 40); }
+    public void setSoft(int v) { sp.edit().putInt("soft", v).apply(); }
+
     public String preset() { return sp.getString("preset", "flat"); }
     public void setPreset(String v) { sp.edit().putString("preset", v).apply(); }
 }

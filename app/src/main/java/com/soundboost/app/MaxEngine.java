@@ -4,14 +4,15 @@ import android.media.audiofx.DynamicsProcessing;
 
 /**
  * โหมด MAX (Android 9 ขึ้นไป)
- *  1) ตัดเบสความถี่ต่ำที่ลำโพงเล่นไม่ได้  -> ลำโพงไม่เสียแรงเปล่า ดังได้มากขึ้นโดยไม่แตก
- *  2) คอมเพรสเซอร์ 3 ย่าน (เบส / กลาง / แหลม) -> เสียงแน่นและดังสม่ำเสมอ
+ *  1) ปรับโทน: ตัดเบสที่ลำโพงเล่นไม่ได้, เติมความอุ่นช่วงเสียงต่ำ-กลาง, ลดช่วงเสียงที่บาดหู
+ *  2) คอมเพรสเซอร์ 4 ย่าน (เบส / อุ่น / ช่วงบาดหู / แหลม) -> ดังสม่ำเสมอแต่ไม่แหลมจัด
  *  3) แรงขับ + ลิมิตเตอร์ -> ดันความดังขึ้น แต่คุมไม่ให้สัญญาณเกินจนแตก
  */
 final class MaxEngine {
     private final DynamicsProcessing dp;
 
-    private static final float LIMIT_DB = -1.0f;
+    /** เว้นเพดานไว้นิดหน่อย กันเสียงแตกตอนส่งผ่านบลูทูธ */
+    private static final float LIMIT_DB = -1.5f;
 
     private MaxEngine(DynamicsProcessing dp) { this.dp = dp; }
 
@@ -20,8 +21,8 @@ final class MaxEngine {
             DynamicsProcessing.Config cfg = new DynamicsProcessing.Config.Builder(
                     DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                     2,          // สเตอริโอ
-                    true, 4,    // pre-EQ 4 ช่อง (ใช้ตัดเบส)
-                    true, 3,    // คอมเพรสเซอร์ 3 ย่าน
+                    true, 6,    // pre-EQ 6 ช่อง
+                    true, 4,    // คอมเพรสเซอร์ 4 ย่าน
                     false, 0,   // ไม่ใช้ post-EQ
                     true)       // ลิมิตเตอร์
                     .setPreferredFrameDuration(10)
@@ -34,39 +35,43 @@ final class MaxEngine {
 
     void apply(Prefs p) {
         try {
-            boolean on = p.maxOn();
-            if (!on) { dp.setEnabled(false); return; }
+            if (!p.maxOn()) { dp.setEnabled(false); return; }
 
-            // 1) ตัดเบส: ช่อง 0 = ใต้จุดตัด (ลดหนัก), ช่อง 1 = ช่วงต่อ (ลดเล็กน้อย)
-            DynamicsProcessing.Eq pre = new DynamicsProcessing.Eq(true, true, 4);
+            float soft = p.soft() / 100f;               // ความนุ่ม 0..1
+
+            // 1) ปรับโทน (ค่าความถี่ = ขอบบนของแต่ละช่อง)
+            DynamicsProcessing.Eq pre = new DynamicsProcessing.Eq(true, true, 6);
             int cut = p.lowCut();
             if (cut > 0) {
-                pre.setBand(0, new DynamicsProcessing.EqBand(true, cut * 0.8f, -24f));
-                pre.setBand(1, new DynamicsProcessing.EqBand(true, cut, -6f));
+                pre.setBand(0, new DynamicsProcessing.EqBand(true, cut * 0.8f, -24f));  // ใต้จุดตัด: ตัดทิ้ง
+                pre.setBand(1, new DynamicsProcessing.EqBand(true, cut, -6f));          // ช่วงต่อ
             } else {
                 pre.setBand(0, new DynamicsProcessing.EqBand(true, 20f, 0f));
                 pre.setBand(1, new DynamicsProcessing.EqBand(true, 40f, 0f));
             }
-            pre.setBand(2, new DynamicsProcessing.EqBand(true, 5000f, 0f));
-            pre.setBand(3, new DynamicsProcessing.EqBand(true, 20000f, p.treble()));   // ความแหลม
+            pre.setBand(2, new DynamicsProcessing.EqBand(true, 350f, 4f * soft));     // ความอุ่น/ลึก
+            pre.setBand(3, new DynamicsProcessing.EqBand(true, 2000f, 0f));           // เสียงร้อง
+            pre.setBand(4, new DynamicsProcessing.EqBand(true, 6000f, -5f * soft));   // ช่วงบาดหู
+            pre.setBand(5, new DynamicsProcessing.EqBand(true, 20000f, p.treble()));  // ความแหลม
             dp.setPreEqAllChannelsTo(pre);
 
-            // 2) คอมเพรสเซอร์ 3 ย่าน
+            // 2) คอมเพรสเซอร์ 4 ย่าน
             float k = p.punch() / 100f;                 // 0..1
-            DynamicsProcessing.Mbc mbc = new DynamicsProcessing.Mbc(true, true, 3);
-            mbc.setBand(0, band(180f,  k, 1.15f, 20f, 120f, 1f));    // เบส: คุมให้กระชับ
-            mbc.setBand(1, band(4000f, k, 1.0f,  10f,  80f, 1f));    // กลาง: เสียงร้อง
-            // แหลม: ไม่ชดเชยความดัง แค่กดยอดเสียงที่บาดหู (เช่น เสียง ส/ซ ฉาบ)
-            mbc.setBand(2, new DynamicsProcessing.MbcBand(
-                    true, 20000f, 2f, 50f, 3f, -16f, 6f, -90f, 1f, 0f, 0f));
+            DynamicsProcessing.Mbc mbc = new DynamicsProcessing.Mbc(true, true, 4);
+            mbc.setBand(0, band(150f,  k, 1.15f, 25f, 150f, 1f));             // เบส: กระชับ ไม่ให้ลิมิตเตอร์ทำงานหนัก
+            mbc.setBand(1, band(1500f, k, 1.0f,  12f, 100f, 1f));             // ต่ำ-กลาง: ความหนาและเสียงร้อง
+            mbc.setBand(2, band(5500f, k, 0.9f,  3f,  60f, 0.4f - 0.3f * soft)); // ช่วงบาดหู: กดยอด ชดเชยน้อย
+            // แหลม: ไม่ชดเชยความดัง แค่กดยอดเสียง ส/ซ และฉาบ
+            mbc.setBand(3, new DynamicsProcessing.MbcBand(
+                    true, 20000f, 2f, 50f, 3f, -18f, 6f, -90f, 1f, 0f, 0f));
             dp.setMbcAllChannelsTo(mbc);
 
-            // 3) แรงขับ + ลิมิตเตอร์
+            // 3) แรงขับ + ลิมิตเตอร์ (ปล่อยช้าลง เสียงเบสจะไม่บี้)
             dp.setInputGainAllChannelsTo(p.drive());
             DynamicsProcessing.Limiter lim = new DynamicsProcessing.Limiter(
                     true, true, 0,
-                    1f,      // attack ms
-                    60f,     // release ms
+                    2f,      // attack ms
+                    150f,    // release ms
                     10f,     // ratio
                     LIMIT_DB,
                     0f);
@@ -81,7 +86,7 @@ final class MaxEngine {
         float amt = Math.min(1f, k * weight);
         float threshold = -8f - 20f * amt;          // -8 .. -28 dB
         float ratio = 1.5f + 2.5f * amt;            // 1.5 .. 4
-        float makeup = (-threshold) * (1f - 1f / ratio) * 0.45f * makeupScale;
+        float makeup = (-threshold) * (1f - 1f / ratio) * 0.45f * Math.max(0f, makeupScale);
         return new DynamicsProcessing.MbcBand(
                 true, cutoff, attack, release, ratio, threshold,
                 6f,      // knee

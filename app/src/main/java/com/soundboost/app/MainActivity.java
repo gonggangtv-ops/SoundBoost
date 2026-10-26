@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
 
     // โหมด MAX
     private Switch maxSwitch;
-    private SeekBar driveBar, punchBar, trebleBar, testBar;
+    private SeekBar driveBar, punchBar, softBar, trebleBar, testBar;
     private TextView lowCutValue, playBtn;
     private LinearLayout testPanel;
     private final ToneGen tone = new ToneGen();
@@ -211,8 +211,9 @@ public class MainActivity extends Activity {
             refreshStatusSoon();
         });
 
-        LinearLayout gap = new LinearLayout(this);
-        c.addView(gap, new LinearLayout.LayoutParams(-1, dp(8)));
+        TextView warmBtn = button("ดังแต่นุ่มลึก (ตั้งค่าให้ทั้งหมด)", true);
+        warmBtn.setOnClickListener(v -> applyWarmLoud());
+        c.addView(warmBtn, lp(0, dp(12), 0, dp(8)));
 
         driveBar = sliderRow(c, "แรงขับ", 12, (value, fromUser) -> {
             if (fromUser) { prefs.setDrive(value); push(); }
@@ -220,6 +221,10 @@ public class MainActivity extends Activity {
         });
         punchBar = sliderRow(c, "ความแน่น", 100, (value, fromUser) -> {
             if (fromUser) { prefs.setPunch(value); push(); }
+            return value + "%";
+        });
+        softBar = sliderRow(c, "ความนุ่ม", 100, (value, fromUser) -> {
+            if (fromUser) { prefs.setSoft(value); push(); }
             return value + "%";
         });
         trebleBar = sliderRow(c, "ความแหลม", 12, (value, fromUser) -> {
@@ -275,7 +280,25 @@ public class MainActivity extends Activity {
         testPanel.addView(btns);
         c.addView(testPanel);
 
-        c.addView(text("ถ้าเสียงแหลมบาดหู ให้ลดความแหลม ถ้าเสียงแตก ให้ลดแรงขับลงก่อน และถ้าใช้โหมด MAX อยู่ แถบ \"เพิ่มความดัง\" ด้านบนจะไม่ทำงาน", 13, MUTED), lp(0, dp(10), 0, 0));
+        c.addView(text("ถ้าเสียงบาดหู ให้เพิ่มความนุ่มหรือลดความแหลม ถ้าเสียงแตก ให้ลดแรงขับลงก่อน และถ้าใช้โหมด MAX อยู่ แถบ \"เพิ่มความดัง\" ด้านบนจะไม่ทำงาน", 13, MUTED), lp(0, dp(10), 0, 0));
+    }
+
+    /** ตั้งค่าชุด "ดังแต่นุ่มลึก" ในครั้งเดียว (ไม่แตะค่าตัดเบสที่วัดไว้) */
+    private void applyWarmLoud() {
+        Presets.Preset warm = Presets.find("warm");
+        prefs.setMaxOn(true);
+        prefs.setDrive(6);
+        prefs.setPunch(55);
+        prefs.setSoft(70);
+        prefs.setTreble(-4);
+        applyPreset(warm);          // ตั้ง EQ, เบส, ความดัง แล้วโหลดค่าทั้งหมดขึ้นจอ + ส่งไปตัวปรับเสียง
+        if (!prefs.enabled()) power.setChecked(true);   // เปิดปรับเสียงให้ด้วยถ้ายังปิดอยู่
+        refreshStatusSoon();
+        if (prefs.lowCut() == 0) {
+            android.widget.Toast.makeText(this, "ตั้งค่าแล้ว แนะนำให้กด \"วัดลำโพง\" ด้วย เบสจะลึกขึ้นโดยไม่แตก", android.widget.Toast.LENGTH_LONG).show();
+        } else {
+            android.widget.Toast.makeText(this, "ตั้งค่า ดังแต่นุ่มลึก แล้ว", android.widget.Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void openTest() {
@@ -361,6 +384,7 @@ public class MainActivity extends Activity {
             maxSwitch.setChecked(prefs.maxOn());
             driveBar.setProgress(prefs.drive());
             punchBar.setProgress(prefs.punch());
+            softBar.setProgress(prefs.soft());
             trebleBar.setProgress(prefs.treble() + 10);
         }
         updateLowCutLabel();
