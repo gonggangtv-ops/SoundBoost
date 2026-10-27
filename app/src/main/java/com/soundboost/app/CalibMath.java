@@ -116,10 +116,10 @@ final class CalibMath {
         double norm = sorted[m / 2];
         for (int i = 0; i < n; i++) resp[i] -= norm;
 
-        // เป้าหมาย: เกือบเรียบ ปลายแหลมลาดลงเล็กน้อย (ฟังสบาย ไม่บาดหู)
+        // เป้าหมาย: เกือบเรียบ ลาดลงนิดเดียวเหนือ 2 kHz (โทนเสียงให้ผู้ใช้ปรับเองด้วยแถบในโหมด MAX)
         double[] dev = new double[n];
         for (int i = 0; i < n; i++) {
-            double target = CENTERS[i] > 1000 ? -1.0 * (Math.log(CENTERS[i] / 1000) / Math.log(2)) : 0;
+            double target = CENTERS[i] > 2000 ? -0.5 * (Math.log(CENTERS[i] / 2000) / Math.log(2)) : 0;
             dev[i] = resp[i] - target;
         }
         // เกลี่ยให้เรียบ กันการแก้จุดเล็กๆ ที่เกิดจากห้อง

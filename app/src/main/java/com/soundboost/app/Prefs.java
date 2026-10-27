@@ -41,12 +41,20 @@ public final class Prefs {
     public int lowCut() { return sp.getInt("lowCut", 0); }
     public void setLowCut(int v) { sp.edit().putInt("lowCut", v).apply(); }
 
-    /** ปรับเสียงแหลมในโหมด MAX, dB (-10..+2) */
-    public int treble() { return sp.getInt("treble", -3); }
+    /** ความกังวาล (เสียงสูงมาก 9 kHz ขึ้นไป) ในโหมด MAX, dB (-10..+6) */
+    public int treble() { return sp.getInt("treble", 0); }
     public void setTreble(int v) { sp.edit().putInt("treble", v).apply(); }
 
-    /** ความนุ่ม 0..100: เติมเสียงต่ำ-กลาง และลดช่วงที่บาดหู */
+    /** กันบาดหู 0..100: ลดช่วง 2-5 kHz ที่ทำให้แสบหู */
     public int soft() { return sp.getInt("soft", 40); }
+
+    /** เบสในโหมด MAX, dB (0..8) เฉพาะช่วงเบสจริง ไม่รวมช่วงที่ทำให้อู้ */
+    public int maxBass() { return sp.getInt("maxBass", 3); }
+    public void setMaxBass(int v) { sp.edit().putInt("maxBass", v).apply(); }
+
+    /** ความใส 0..100: ยิ่งมาก ยิ่งลดช่วง 150-400 Hz ที่ทำให้เสียงอู้ */
+    public int clarity() { return sp.getInt("clarity", 50); }
+    public void setClarity(int v) { sp.edit().putInt("clarity", v).apply(); }
     public void setSoft(int v) { sp.edit().putInt("soft", v).apply(); }
 
     // ---------- ปรับอัตโนมัติ ----------

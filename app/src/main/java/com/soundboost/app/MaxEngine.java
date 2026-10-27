@@ -5,7 +5,8 @@ import android.media.audiofx.DynamicsProcessing;
 /**
  * ตัวประมวลผลเสียงหลัก (Android 9 ขึ้นไป)
  *  โหมด MAX:
- *   1) ปรับโทน: ตัดเบสที่ลำโพงเล่นไม่ได้, เติมความอุ่น (ปรับตามระดับเสียง), ลดช่วงที่บาดหู
+ *   1) ปรับโทน 8 ช่อง: ตัดเบสที่เล่นไม่ได้ / เบส (ปรับตามระดับเสียง) / ช่วงอู้ / กลาง /
+ *      ช่วงบาดหู / ช่วงต่อ / ความกังวาล
  *   2) คอมเพรสเซอร์ 4 ย่าน (เบส / อุ่น / ช่วงบาดหู / แหลม)
  *   3) แรงขับ
  *  ปรับอัตโนมัติจากไมค์:
@@ -27,7 +28,7 @@ final class MaxEngine {
             DynamicsProcessing.Config cfg = new DynamicsProcessing.Config.Builder(
                     DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                     2,                  // สเตอริโอ
-                    true, 6,            // pre-EQ 6 ช่อง
+                    true, 8,            // pre-EQ 8 ช่อง
                     true, 4,            // คอมเพรสเซอร์ 4 ย่าน
                     true, POST_BANDS,   // EQ แก้เสียงจากการวัด
                     true)               // ลิมิตเตอร์
@@ -40,12 +41,12 @@ final class MaxEngine {
     }
 
     /**
-     * ความอุ่นที่เพิ่ม/ลดตามระดับเสียง (dB)
-     * เปิดเบา (≤30%) +5 dB เพราะหูได้ยินเบสน้อยลง, เปิดดัง (≥90%) -2 dB กันลำโพงแตก
+     * เบสที่เพิ่ม/ลดตามระดับเสียง (dB) ใช้เฉพาะช่วงเบสจริง (ต่ำกว่า 150 Hz)
+     * เปิดเบา (≤30%) +4 dB เพราะหูได้ยินเบสน้อยลง, เปิดดัง (≥90%) -3 dB กันลำโพงแตก
      */
     static float autoBassDb(float volume) {
         float t = Math.max(0f, Math.min(1f, (volume - 0.3f) / 0.6f));
-        return 5f + (-2f - 5f) * t;
+        return 4f + (-3f - 4f) * t;
     }
 
     void apply(Prefs p, float volume) {
@@ -55,22 +56,28 @@ final class MaxEngine {
             if (!max && corr == null) { dp.setEnabled(false); return; }
 
             float soft = p.soft() / 100f;
+            float clarity = p.clarity() / 100f;
             float auto = p.autoBass() ? autoBassDb(volume) : 0f;
+            float m = max ? 1f : 0f;
 
-            // 1) ปรับโทน (ค่าความถี่ = ขอบบนของแต่ละช่อง)
-            DynamicsProcessing.Eq pre = new DynamicsProcessing.Eq(true, max, 6);
-            int cut = p.lowCut();
-            if (max && cut > 0) {
-                pre.setBand(0, new DynamicsProcessing.EqBand(true, cut * 0.8f, -24f));
-                pre.setBand(1, new DynamicsProcessing.EqBand(true, cut, -6f));
+            // 1) ปรับโทน (ค่าความถี่ = ขอบบนของแต่ละช่อง ต้องเรียงจากต่ำไปสูง)
+            int cut = max ? p.lowCut() : 0;
+            float bassEdge = Math.max(150f, cut * 1.25f);
+            float mudEdge = Math.max(400f, bassEdge * 2f);
+            DynamicsProcessing.Eq pre = new DynamicsProcessing.Eq(true, max, 8);
+            if (cut > 0) {
+                pre.setBand(0, new DynamicsProcessing.EqBand(true, cut * 0.8f, -24f));  // ใต้จุดตัด: ตัดทิ้ง
+                pre.setBand(1, new DynamicsProcessing.EqBand(true, cut, -6f));          // ช่วงต่อ
             } else {
                 pre.setBand(0, new DynamicsProcessing.EqBand(true, 20f, 0f));
                 pre.setBand(1, new DynamicsProcessing.EqBand(true, 40f, 0f));
             }
-            pre.setBand(2, new DynamicsProcessing.EqBand(true, 350f, max ? 4f * soft + auto : 0f));
-            pre.setBand(3, new DynamicsProcessing.EqBand(true, 2000f, 0f));
-            pre.setBand(4, new DynamicsProcessing.EqBand(true, 6000f, max ? -5f * soft : 0f));
-            pre.setBand(5, new DynamicsProcessing.EqBand(true, 20000f, max ? p.treble() : 0f));
+            pre.setBand(2, new DynamicsProcessing.EqBand(true, bassEdge, m * (p.maxBass() + auto)));  // เบส
+            pre.setBand(3, new DynamicsProcessing.EqBand(true, mudEdge, m * (2f - 6f * clarity)));    // ช่วงอู้
+            pre.setBand(4, new DynamicsProcessing.EqBand(true, 2000f, 0f));                           // เสียงร้อง
+            pre.setBand(5, new DynamicsProcessing.EqBand(true, 5000f, m * (-5f * soft)));             // ช่วงบาดหู
+            pre.setBand(6, new DynamicsProcessing.EqBand(true, 9000f, m * (0.4f * p.treble())));      // ช่วงต่อ
+            pre.setBand(7, new DynamicsProcessing.EqBand(true, 20000f, m * p.treble()));              // ความกังวาล
             dp.setPreEqAllChannelsTo(pre);
 
             // 2) คอมเพรสเซอร์ 4 ย่าน
