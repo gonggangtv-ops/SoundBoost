@@ -57,6 +57,14 @@ public final class Prefs {
     public void setClarity(int v) { sp.edit().putInt("clarity", v).apply(); }
     public void setSoft(int v) { sp.edit().putInt("soft", v).apply(); }
 
+    /** ประกายเสียง (สไตล์ MaxxTreble) 0..100: ยกเสียงสูงที่เบาให้ชัดขึ้น แต่กดยอดที่ดังเกิน */
+    public int sparkle() { return sp.getInt("sparkle", 0); }
+    public void setSparkle(int v) { sp.edit().putInt("sparkle", v).apply(); }
+
+    /** ความแรงของการแก้เสียงจากไมค์ 0..100 */
+    public int calibAmount() { return sp.getInt("calibAmount", 60); }
+    public void setCalibAmount(int v) { sp.edit().putInt("calibAmount", v).apply(); }
+
     // ---------- ปรับอัตโนมัติ ----------
     /** ผลการแก้เสียงจากการวัดด้วยไมค์ (dB ต่อช่อง คั่นด้วยจุลภาค) */
     public String calib() { return sp.getString("calib", ""); }

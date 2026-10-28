@@ -44,7 +44,7 @@ public class MainActivity extends Activity {
 
     // โหมด MAX
     private Switch maxSwitch;
-    private SeekBar driveBar, punchBar, maxBassBar, clarityBar, softBar, trebleBar, testBar;
+    private SeekBar driveBar, punchBar, maxBassBar, clarityBar, softBar, trebleBar, sparkleBar, calibAmountBar, testBar;
     private TextView lowCutValue, playBtn;
     private LinearLayout testPanel;
     private final ToneGen tone = new ToneGen();
@@ -231,6 +231,17 @@ public class MainActivity extends Activity {
         c.addView(line, lp(0, dp(14), 0, dp(4)));
         line.getLayoutParams().height = dp(1);
 
+        calibAmountBar = sliderRow(c, "ความแรง", 100, (value, fromUser) -> {
+            if (fromUser) { prefs.setCalibAmount(value); push(); }
+            return value + "%";
+        });
+        c.addView(text("ถ้าแก้แล้วเสียงทึบ ให้ลดความแรงลง", 12, MUTED));
+
+        LinearLayout line2 = new LinearLayout(this);
+        line2.setBackgroundColor(LINE);
+        c.addView(line2, lp(0, dp(12), 0, dp(4)));
+        line2.getLayoutParams().height = dp(1);
+
         autoBassSwitch = switchRow(c, "เบสตามระดับเสียง", "เปิดเบา = เบสลึกขึ้น · เปิดดัง = ลดเบสลงกันแตก");
         autoBassSwitch.setOnCheckedChangeListener((v, on) -> {
             if (on == prefs.autoBass()) return;
@@ -368,7 +379,10 @@ public class MainActivity extends Activity {
 
         c.addView(text("กดเพื่อตั้งค่าทั้งหมดในครั้งเดียว", 13, MUTED), lp(0, dp(12), 0, dp(6)));
         LinearLayout quick = new LinearLayout(this);
-        TextView clearBtn = button("ใสกังวาล เบสชัด", true);
+        TextView maxxBtn = button("สไตล์ Maxx: ใสแน่น เบสกระแทก", true);
+        maxxBtn.setOnClickListener(v -> applySound("maxx"));
+        c.addView(maxxBtn, lp(0, 0, 0, dp(8)));
+        TextView clearBtn = button("ใสกังวาล เบสชัด", false);
         clearBtn.setOnClickListener(v -> applySound("clear"));
         TextView warmBtn = button("นุ่มลึก", false);
         warmBtn.setOnClickListener(v -> applySound("warm"));
@@ -394,6 +408,10 @@ public class MainActivity extends Activity {
         });
         softBar = sliderRow(c, "กันบาดหู", 100, (value, fromUser) -> {
             if (fromUser) { prefs.setSoft(value); push(); }
+            return value + "%";
+        });
+        sparkleBar = sliderRow(c, "ประกายเสียง", 100, (value, fromUser) -> {
+            if (fromUser) { prefs.setSparkle(value); push(); }
             return value + "%";
         });
         trebleBar = sliderRow(c, "ความกังวาล", 16, (value, fromUser) -> {
@@ -456,7 +474,16 @@ public class MainActivity extends Activity {
     private void applySound(String id) {
         prefs.setMaxOn(true);
         prefs.setDrive(6);
-        if ("clear".equals(id)) {        // ใสกังวาล เบสชัด
+        if ("maxx".equals(id)) {          // สไตล์ MaxxAudio: ดังแน่น เบสกระแทก แหลมมีประกาย
+            prefs.setDrive(7);
+            prefs.setPunch(65);
+            prefs.setMaxBass(5);
+            prefs.setClarity(65);
+            prefs.setSoft(25);
+            prefs.setTreble(2);
+            prefs.setSparkle(60);
+        } else if ("clear".equals(id)) {  // ใสกังวาล เบสชัด
+            prefs.setSparkle(20);
             prefs.setPunch(50);
             prefs.setMaxBass(4);
             prefs.setClarity(70);         // ลดช่วงอู้ประมาณ 2 dB
@@ -468,6 +495,7 @@ public class MainActivity extends Activity {
             prefs.setClarity(30);
             prefs.setSoft(70);
             prefs.setTreble(-2);
+            prefs.setSparkle(0);
         }
         applyPreset(Presets.find(id));   // ตั้ง EQ แล้วโหลดค่าทั้งหมดขึ้นจอ + ส่งไปตัวปรับเสียง
         if (!prefs.enabled()) power.setChecked(true);   // เปิดปรับเสียงให้ด้วยถ้ายังปิดอยู่
@@ -566,12 +594,14 @@ public class MainActivity extends Activity {
             clarityBar.setProgress(prefs.clarity());
             softBar.setProgress(prefs.soft());
             trebleBar.setProgress(prefs.treble() + 10);
+            sparkleBar.setProgress(prefs.sparkle());
         }
         updateLowCutLabel();
 
         double[] corr = CalibMath.decode(prefs.calib());
         calibSwitch.setEnabled(corr != null);
         calibSwitch.setChecked(corr != null && prefs.calibOn());
+        calibAmountBar.setProgress(prefs.calibAmount());
         autoBassSwitch.setChecked(prefs.autoBass());
         if (corr != null) {
             curve.setValues(corr);

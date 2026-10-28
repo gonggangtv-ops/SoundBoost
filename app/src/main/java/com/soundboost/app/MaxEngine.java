@@ -86,15 +86,23 @@ final class MaxEngine {
             mbc.setBand(0, band(150f,  k, 1.15f, 25f, 150f, 1f));
             mbc.setBand(1, band(1500f, k, 1.0f,  12f, 100f, 1f));
             mbc.setBand(2, band(5500f, k, 0.9f,  3f,  60f, 0.4f - 0.3f * soft));
+            // แหลม: ปกติแค่กดยอดเสียง ส/ซ, ถ้าเปิด "ประกายเสียง" จะยกเสียงสูงที่เบาขึ้นมาด้วย (สไตล์ MaxxTreble)
+            float sp = max ? p.sparkle() / 100f : 0f;
             mbc.setBand(3, new DynamicsProcessing.MbcBand(
-                    true, 20000f, 2f, 50f, 3f, -18f, 6f, -90f, 1f, 0f, 0f));
+                    true, 20000f, 2f, 50f, 3f + sp, -18f - 10f * sp, 6f, -90f, 1f, 0f, 6f * sp));
             dp.setMbcAllChannelsTo(mbc);
 
             // 4) EQ แก้เสียงลำโพงจากการวัด
             DynamicsProcessing.Eq post = new DynamicsProcessing.Eq(true, corr != null, POST_BANDS);
             post.setBand(0, new DynamicsProcessing.EqBand(true, (float) (CalibMath.CENTERS[0] / CalibMath.EDGE), 0f));
             for (int i = 0; i < CalibMath.CENTERS.length; i++) {
-                float g = corr != null ? (float) corr[i] : 0f;
+                float g = 0f;
+                if (corr != null) {
+                    g = (float) corr[i] * (p.calibAmount() / 75f);   // ผลวัดเก็บไว้ที่ 75% → ปรับตามแถบ
+                    // ไมค์มือถือวัดเสียงสูงได้ไม่แม่น: ห้ามตัดเหนือ 4 kHz เกิน 3 dB
+                    if (CalibMath.CENTERS[i] > 4000) g = Math.max(g, -3f);
+                    g = Math.max(-9f, Math.min(3f, g));
+                }
                 post.setBand(i + 1, new DynamicsProcessing.EqBand(true, (float) (CalibMath.CENTERS[i] * CalibMath.EDGE), g));
             }
             post.setBand(POST_BANDS - 1, new DynamicsProcessing.EqBand(true, 20000f, 0f));

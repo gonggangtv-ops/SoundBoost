@@ -15,6 +15,7 @@ public final class Presets {
 
     public static final Preset[] ALL = {
         new Preset("flat",   "ปกติ",          new double[]{ 0,  0,  0, 0, 0},   0,   0),
+        new Preset("maxx",   "สไตล์ Maxx",    new double[]{ 3, -2,  0, 1, 3},   0,   0),
         new Preset("clear",  "ใส เบสชัด",     new double[]{ 2, -2,  0, 0, 2},   0,   0),
         new Preset("warm",   "นุ่มลึก",        new double[]{ 3,  2,  0,-2,-1}, 200,   0),
         new Preset("small",  "ลำโพงเล็ก",     new double[]{ 2,  6,  1, 3, 2}, 300, 300),
